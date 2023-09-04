@@ -1,15 +1,19 @@
 import { Body, Controller, Get, Param } from '@nestjs/common';
 
-import { CardModel } from './model';
-import { CardService } from './service';
+import { CardModel } from 'src/modules/card/model';
+import { SearchInput } from 'src/common/interface';
+import { SearchResult } from 'src/common/interface';
+import { CardService } from 'src/modules/card/service';
 
 @Controller('cards')
 export class CardsController {
   constructor(private readonly cardService: CardService) {}
 
   @Get('/')
-  searchCards(@Body() input: CardModel): Promise<CardModel[]> {
-    return this.cardService.searchCards(input);
+  searchCards(
+    @Body() input: SearchInput<CardModel>,
+  ): Promise<SearchResult<CardModel>> {
+    return this.cardService.searchAll(input);
   }
 
   @Get('/:cardId')

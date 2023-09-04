@@ -2,13 +2,16 @@ import mongoose, { Model } from 'mongoose';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 
-import { CardModel } from './model';
+import { CardModel } from 'src/modules/card/model';
+import { BaseService } from 'src/common/base.service';
 
 @Injectable()
-export class CardService {
+export class CardService extends BaseService<CardModel> {
   constructor(
     @InjectModel(CardModel.name) private cardModel: Model<CardModel>,
-  ) {}
+  ) {
+    super(cardModel);
+  }
 
   insertMany(cards: CardModel[]): Promise<CardModel[]> {
     return this.cardModel.insertMany(cards);
@@ -18,7 +21,7 @@ export class CardService {
     return this.cardModel.findOne({ _id: new mongoose.Types.ObjectId(cardId) });
   }
 
-  private buildCardSearch(input?: CardModel): Record<string, any> {
+  buildSearchCriteria(input?: Partial<CardModel>): Record<string, any> {
     const query: Record<string, any> = {};
 
     if (!input) {
@@ -47,11 +50,5 @@ export class CardService {
     }
 
     return query;
-  }
-
-  async searchCards(input?: CardModel): Promise<CardModel[]> {
-    const query = this.buildCardSearch(input);
-
-    return this.cardModel.where(query);
   }
 }

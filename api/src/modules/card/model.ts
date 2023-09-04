@@ -13,8 +13,13 @@ export class CardModel {
   })
   _id?: string;
 
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+  })
+  gameId?: string;
+
   @Prop()
-  attributes: AttributeModel[];
+  attributes?: AttributeModel[];
 }
 
 export const CardSchema = SchemaFactory.createForClass(CardModel);

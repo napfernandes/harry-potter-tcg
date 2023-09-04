@@ -1,3 +1,5 @@
+import { CardModel } from '../card/model';
+
 export interface Attribute {
   key: string;
   value: string;
@@ -78,3 +80,5 @@ export interface CardFromJsonFile {
   cardPageUrl: string;
   rulingRestrictions: string[];
 }
+
+export type CardModelForImporting = CardModel & { tempCardId: string };

@@ -1,31 +1,20 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { Injectable } from '@nestjs/common';
 
-import { CardSet } from '../card/enum';
+import { CardGameName } from './enum';
 import { CardModel } from '../card/model';
 import { CardService } from '../card/service';
-import { CardFromJsonFile } from './interface';
+import { GameService } from '../game/service';
 import { AttributeModel, AttributeValue } from '../attribute/model';
-
-type CardModelForImporting = CardModel & { tempCardId: string };
+import { CardFromJsonFile, CardModelForImporting } from './interface';
 
 @Injectable()
 export class DataImporterService {
-  setFilePath = '';
-
-  constructor(private readonly cardService: CardService) {}
-
-  cardSetsAndFileNames: Record<CardSet, string> = {
-    [CardSet.ADVENTURES_AT_HOGWARTS]: 'adventures-at-hogwarts',
-    [CardSet.BASE_SET]: 'base-set',
-    [CardSet.CHAMBER_OF_SECRETS]: 'chamber-of-secrets',
-    [CardSet.DIAGON_ALLEY]: 'diagon-alley',
-    [CardSet.ECHOES_OF_THE_PAST]: 'echoes-of-the-past',
-    [CardSet.HEIR_OF_SLYTHERIN]: 'heir-of-slytherin',
-    [CardSet.PRISONER_OF_ASKABAN]: 'prisoner-of-askaban',
-    [CardSet.QUIDDITCH_CUP]: 'quidditch-cup',
-    [CardSet.STREETS_OF_HOGSMEADE]: 'streets-of-hogsmeade',
-  };
+  constructor(
+    private readonly cardService: CardService,
+    private readonly gameService: GameService,
+  ) {}
 
   async readFromSet(filePath: string): Promise<CardFromJsonFile[]> {
     const result = fs.readFileSync(filePath, { encoding: 'utf-8' });
@@ -45,7 +34,10 @@ export class DataImporterService {
     return { key, language, value };
   }
 
-  buildCardFromJsonFileToModel(card: CardFromJsonFile): CardModelForImporting {
+  buildCardFromJsonFileToModel(
+    gameId: string,
+    card: CardFromJsonFile,
+  ): CardModelForImporting {
     const language = card.detail.language.code.toLowerCase();
     const cardSubTypes = card.subTypes.map((subType) => subType.subType.name);
     const cardImages = card.images.map((image) => ({
@@ -54,6 +46,7 @@ export class DataImporterService {
     }));
 
     return {
+      gameId,
       tempCardId: card.cardId,
       attributes: [
         this.buildAttribute('name', language, card.detail.name),
@@ -85,17 +78,18 @@ export class DataImporterService {
     };
   }
 
-  mapCards(cards: CardFromJsonFile[]): CardModel[] {
+  mapCards(gameId: string, cards: CardFromJsonFile[]): CardModel[] {
     const mappedCards: CardModelForImporting[] = [];
 
     for (const card of cards) {
-      const builtCard = this.buildCardFromJsonFileToModel(card);
+      const builtCard = this.buildCardFromJsonFileToModel(gameId, card);
       const cardIndex = mappedCards.findIndex(
         (map) => map.tempCardId === builtCard.tempCardId,
       );
 
       if (cardIndex !== -1) {
         mappedCards[cardIndex] = {
+          gameId,
           tempCardId: builtCard.tempCardId,
           attributes: [
             ...mappedCards[cardIndex].attributes,
@@ -113,24 +107,37 @@ export class DataImporterService {
 
   async importAllSets(): Promise<boolean> {
     try {
-      const keys = Object.keys(this.cardSetsAndFileNames);
+      const baseAssetsPath = './src/assets';
+      const cardGamePaths = fs.readdirSync(baseAssetsPath);
+      for (const cardGamePath of cardGamePaths) {
+        const gameAssetsPath = path.join(baseAssetsPath, cardGamePath);
 
-      for (const key of keys) {
-        console.log(
-          `Importing set: ${key.toUpperCase()} (${
-            this.cardSetsAndFileNames[key]
-          })...`,
-        );
-        const setPath = `./src/assets/harry-potter-tcg-${this.cardSetsAndFileNames[key]}.json`;
-        const cards = await this.readFromSet(setPath);
-        const mappedCards = this.mapCards(cards);
+        const game = await this.gameService.insert({
+          code: cardGamePath,
+          name: CardGameName[cardGamePath],
+          description: cardGamePath,
+          imageUrl: 'replacement',
+        });
 
-        console.log(`Number of cards: ${mappedCards.length}`);
+        const cardSetPaths = fs.readdirSync(gameAssetsPath);
 
-        await this.cardService.insertMany(mappedCards);
+        for (const cardSetPath of cardSetPaths) {
+          const cardSetName = cardSetPath.split('.')[0];
+
+          console.log(`Importing set: ${cardSetName}...`);
+          const setPath = path.join(gameAssetsPath, cardSetPath);
+          const cards = await this.readFromSet(setPath);
+          const mappedCards = this.mapCards(game._id, cards);
+
+          console.log(`Number of cards: ${mappedCards.length}`);
+
+          await this.cardService.insertMany(mappedCards);
+          await this.gameService.incrementNumberOfCardsById(
+            game._id,
+            mappedCards.length,
+          );
+        }
       }
-
-      console.log(`Importing finished.`);
 
       return true;
     } catch (error) {
